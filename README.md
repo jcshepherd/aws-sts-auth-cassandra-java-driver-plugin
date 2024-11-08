@@ -1,0 +1,1 @@
+# aws-sts-auth-cassandra-java-driver-plugin
