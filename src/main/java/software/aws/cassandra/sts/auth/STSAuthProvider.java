@@ -10,7 +10,7 @@ import edu.umd.cs.findbugs.annotations.NonNull;
 
 /**
  * Implementation of{@link com.datastax.oss.driver.api.core.auth.AuthProvider} to enable client
- * authentication to Cassandra nodes using signed AWS STS requests.
+ * authentication to Cassandra nodes using signed AWS STS GetCallerIdentity requests.
  */
 public class STSAuthProvider implements AuthProvider {
 
