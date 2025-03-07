@@ -137,7 +137,7 @@ public class STSAuthenticator implements Authenticator {
             throw new IllegalArgumentException("Node provided invalid nonce: insufficient data");
         }
 
-        view.position(nonceStart);
+        ((Buffer)view).position(nonceStart);
 
         byte[] nonceBytes = new byte[EXPECTED_NONCE_LENGTH_BYTES];
         int bytesRead = 0;
