@@ -25,6 +25,10 @@ import java.util.concurrent.CompletionStage;
  * Client/driver-side support for authenticating to a Cassandra node using the client's AWS IAM credentials. Note
  * that the "nonce" provided by the node in its AUTH_CHALLENGE must be included in the signed request, as the
  * "X-C8-Nonce" query parameter.
+ * <p>
+ * Implementation note: Certain ByteBuffer operations (e.g. flip(), clear()) will fail at runtime if the code
+ * is compiled with a newer JDK (> 8) but run against an older JRE. Preemptively casting to Buffer avoids the
+ * runtime failures by ensuring the base class method is always invoked.
  */
 public class STSAuthenticator implements Authenticator {
 
@@ -49,9 +53,6 @@ public class STSAuthenticator implements Authenticator {
     static {
         ByteBuffer initialResponse = ByteBuffer.allocate(STS_INITIAL_RESPONSE_BYTES.length);
         initialResponse.put(STS_INITIAL_RESPONSE_BYTES);
-        // Certain byte buffer operations (e.g. flip(), clear()) will fail at runtime if the code
-        // is compiled with a newer JDK (> 8) but run against an older JRE. Preemptively casting
-        // to Buffer avoids the runtime failures by ensuring the base class method is always invoked.
         ((Buffer)initialResponse).flip();
         STS_INITIAL_RESPONSE = initialResponse.asReadOnlyBuffer();
     }
@@ -60,7 +61,7 @@ public class STSAuthenticator implements Authenticator {
      * AWS (IAM) credentials provider for this authenticator instance. If not specified uses the
      * DefaultCredentialsProvider.
      */
-    private AwsCredentialsProvider credentialsProvider;
+    private final AwsCredentialsProvider credentialsProvider;
 
     /**
      * The AWS region for the STS region that the node will call to authenticate this client. This
@@ -69,7 +70,7 @@ public class STSAuthenticator implements Authenticator {
      *
      * TODO - This seems bogus on several levels. Should the node be telling the client what region to use?
      */
-    private Region region;
+    private final Region region;
 
     public STSAuthenticator() {
         this.credentialsProvider = DefaultCredentialsProvider.create();

@@ -20,9 +20,11 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Random;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -40,6 +42,7 @@ public class STSAuthenticatorTest {
     /** Predictably generate "random" nonces for testing purposes. */
     private static final Random RND = new Random();
 
+    /** Mock credentials for signing STS requests. */
     private static final Map<String, Map<String, String>> AUTH_PARAMS;
 
     static {
@@ -143,11 +146,16 @@ public class STSAuthenticatorTest {
             String encodedNonce = new String(encodeNonce(nonce), StandardCharsets.US_ASCII);
             String httpEncodedNonce = URLEncoder.encode(encodedNonce, StandardCharsets.UTF_8.toString());
             assertTrue(url.getQuery().contains("X-C8-Nonce=" + httpEncodedNonce), test);
+
+            // This is a no-op but should always succeed.
+            CompletableFuture<Void> onSuccess = authenticator.onAuthenticationSuccess(ByteBuffer.allocate(0)).toCompletableFuture();
+            assertTrue(onSuccess.isDone());
+            assertNull(onSuccess.get());
         }
     }
 
     /**
-     * Validates that the authenticator correctly fails if the node-provided nonce is less than the expected length.
+     * Validates that the authenticator correctly fails if the node-provided nonce is shorter than the expected length.
      */
     @Test
     public void testEvaluateChallengeWithInvalidNonce() {
@@ -161,11 +169,10 @@ public class STSAuthenticatorTest {
         });
     }
 
-
     /**
-     * Validates that the authenticator correctly fails if the node-provided nonce is less than the expected length.
+     * Validates that the authenticator correctly fails if the node-provided nonce is longer than the expected length.
      * <p>
-     * Test is currently disabled. A server passing a oversized nonce should lead to an authn failure because the
+     * Test is currently disabled. A server passing an oversized nonce should lead to an authn failure because the
      * client will return a truncated nonce to the server. But it'd be nice to fail on this client-side.
      */
     @Disabled
@@ -180,6 +187,42 @@ public class STSAuthenticatorTest {
             authenticator.evaluateChallenge(challenge).toCompletableFuture().get();
         });
     }
+
+    /**
+     * Validates that the authenticator correctly fails if the node-provided nonce is not a valid Base64 encoding.
+     */
+    @Test
+    public void testEvaluateChallengeWithNonBase64EncodedNonce() {
+        STSAuthenticator authenticator = new STSAuthenticator(mockCredentialsProvider, Region.US_EAST_1);
+
+        byte[] nonce = newNonce(24); // Same length as a Base64-encoded 16-byte nonce ... but it's not encoded.
+
+        ByteBuffer challenge = newAuthChallengeFromEncodedNonce(nonce);
+
+        Exception e  = assertThrows(IllegalArgumentException.class, () -> {
+            authenticator.evaluateChallenge(challenge).toCompletableFuture().get();
+        });
+
+        assertTrue(e.getMessage().contains("Node provided invalid nonce: not Base-64 encoded"));
+    }
+
+    /**
+     * Validates that the authenticator correctly fails if the node-provided auth challenge has an invalid nonce key.
+     */
+    @Test
+    public void testEvaluateChallengeWithInvalidNonceKey() {
+        STSAuthenticator authenticator = new STSAuthenticator(mockCredentialsProvider, Region.US_EAST_1);
+
+        byte[] nonce = newNonce(16);
+        ByteBuffer challenge =
+                newAuthChallengeFromNonceKeyAndEncodedNonce("start=".getBytes(), Base64.getEncoder().encode(nonce));
+
+        Exception e = assertThrows(IllegalArgumentException.class, () -> authenticator.evaluateChallenge(challenge).toCompletableFuture().get());
+
+        assertTrue(e.getMessage().contains("Expected nonce not found in endpoint challenge"));
+
+    }
+
 
     /**
      * Creates and returns a ByteBuffer containing a mock nonce challenge.
@@ -197,8 +240,21 @@ public class STSAuthenticatorTest {
      */
     private static ByteBuffer newAuthChallenge(byte[] nonce) {
         byte[] encodedNonce = Base64.getEncoder().encode(nonce);
-        ByteBuffer buffer = ByteBuffer.allocate(STSAuthenticator.NONCE_KEY.length + encodedNonce.length);
-        buffer.put(STSAuthenticator.NONCE_KEY);
+        return newAuthChallengeFromEncodedNonce(encodedNonce);
+    }
+
+    /**
+     * Creates and returns a ByteBuffer containing a mock nonce challenge.
+     * @param encodedNonce The Base64-encoded nonce to use in the challenge.
+     * @return A ByteBuffer containing a mock nonce challenge.
+     */
+    private static ByteBuffer newAuthChallengeFromEncodedNonce(byte[] encodedNonce) {
+        return newAuthChallengeFromNonceKeyAndEncodedNonce(STSAuthenticator.NONCE_KEY, encodedNonce);
+    }
+
+    private static ByteBuffer newAuthChallengeFromNonceKeyAndEncodedNonce(byte[] nonceKey, byte[] encodedNonce) {
+        ByteBuffer buffer = ByteBuffer.allocate(nonceKey.length + encodedNonce.length);
+        buffer.put(nonceKey);
         return (ByteBuffer) ((Buffer) buffer.put(encodedNonce).flip());
     }
 
