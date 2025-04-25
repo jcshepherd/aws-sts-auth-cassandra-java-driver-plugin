@@ -67,16 +67,24 @@ public class STSAuthenticator implements Authenticator {
      * The AWS region for the STS region that the node will call to authenticate this client. This
      * is often the same region as the client itself, but may be different when clients are calling
      * across regions. If not specified, defaults to US_WEST_2.
-     *
-     * TODO - This seems bogus on several levels. Should the node be telling the client what region to use?
      */
     private final Region region;
 
+    /**
+     * Constructs a new STSAuthenticator using the AWS {@link DefaultCredentialsProvider} and signing requests
+     * for the us-west-2 AWS region.
+     */
     public STSAuthenticator() {
         this.credentialsProvider = DefaultCredentialsProvider.create();
-        this.region = Region.US_WEST_2;
+        this.region = Region.US_WEST_2; // TODO - I'm not comfortable with this default.
     }
 
+    /**
+     * Constructs a new STSAuthenticator using the given credentials provider and AWS region.
+     * @param credentialsProvider An {@code AwsCredentialsProvider} that provides credentials for the actor/principal
+     *                            to be authenticated.
+     * @param region The AWS region that will handle authentication of the principal.
+     */
     public STSAuthenticator(AwsCredentialsProvider credentialsProvider, Region region) {
         this.credentialsProvider = credentialsProvider;
         this.region = region;
